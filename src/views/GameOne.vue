@@ -93,7 +93,7 @@ function generatePositions() {
   // 特殊處理：單一物件置中
   if (store.targetNumber === 1) {
     itemPositions.value = [{
-      top: '40%',
+      top: '42%',
       left: '50%',
       rotation: '0deg'
     }]
@@ -103,8 +103,8 @@ function generatePositions() {
   // 特殊處理：兩個物件左右對稱
   if (store.targetNumber === 2) {
     itemPositions.value = [
-      { top: '38%', left: '30%', rotation: '-5deg' },
-      { top: '42%', left: '70%', rotation: '5deg' }
+      { top: '40%', left: '30%', rotation: '-5deg' },
+      { top: '44%', left: '70%', rotation: '5deg' }
     ]
     return
   }
@@ -114,9 +114,9 @@ function generatePositions() {
   const cols = Math.ceil(Math.sqrt(store.targetNumber * 1.2)) // 略寬的網格
   const rows = Math.ceil(store.targetNumber / cols)
 
-  // 定義可用區域
-  const areaTop = 10
-  const areaHeight = 62
+  // 定義可用區域（避免與頂部選單重疊）
+  const areaTop = 18
+  const areaHeight = 54
   const areaLeft = 20
   const areaWidth = 60
 
@@ -290,6 +290,7 @@ onMounted(() => {
 <style scoped>
 .game-container {
   height: 100%;
+  height: 100vh; /* Fallback */
   height: 100dvh; /* Dynamic viewport height */
   width: 100vw;
   display: flex;
@@ -303,16 +304,25 @@ onMounted(() => {
   position: fixed;
   top: 0;
   left: 0;
+  /* iPhone safe area support */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  /* Prevent bounce scroll on iOS */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .status-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 15px; /* Reduced padding */
+  padding: 10px 15px;
   background: rgba(255, 255, 255, 0.6);
+  -webkit-backdrop-filter: blur(5px);
   backdrop-filter: blur(5px);
-  font-size: 1rem; /* Slightly smaller font for mobile */
+  font-size: 1rem;
   font-weight: bold;
   color: #333;
   z-index: 10;
@@ -338,6 +348,8 @@ onMounted(() => {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   white-space: nowrap;
   min-width: 70px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .exit-btn {
@@ -345,6 +357,8 @@ onMounted(() => {
   border: none;
   font-size: 1.2rem;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .top-section {
@@ -368,6 +382,12 @@ onMounted(() => {
   justify-content: center;
   transform: translate(-50%, -50%);
   transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+  /* iOS touch optimization */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Dynamic Sizes */

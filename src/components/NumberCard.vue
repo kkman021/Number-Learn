@@ -35,6 +35,11 @@ defineEmits<{
   cursor: pointer;
   transition: transform 0.1s, background-color 0.2s;
   box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  /* iOS touch optimization */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .number-card:active:not(:disabled) {
