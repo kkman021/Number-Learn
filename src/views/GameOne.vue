@@ -16,8 +16,6 @@ import bgOcean from '../assets/bg_ocean.png'
 import bgSpace from '../assets/bg_space.png'
 import bgOrchard from '../assets/bg_Orchard.png'
 
-// Background themes based on items
-// Adding a white overlay to make items pop and background less distracting
 const overlay = 'linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6))'
 
 const backgroundThemes: Record<string, string> = {
@@ -33,7 +31,6 @@ const backgroundThemes: Record<string, string> = {
   cat: `${overlay}, url(${bgOrchard})`,
   dog: `${overlay}, url(${bgOrchard})`,
   ball: `${overlay}, url(${bgOrchard})`,
-  // Default fallback
   default: `${overlay}, url(${bgOrchard})`
 }
 
@@ -42,11 +39,46 @@ const currentBackground = computed(() => {
   return backgroundThemes[store.currentItem] || backgroundThemes.default
 })
 
-// Random positions for items
+// 原始位置（散落在畫面上）
 const itemPositions = ref<{top: string, left: string, rotation: string}[]>([])
+
+// 已收集的項目索引（按點擊順序）
+const collectedItems = ref<number[]>([])
+
+// 根據目標數量動態計算收集區項目大小
+const collectedItemStyle = computed(() => {
+  const maxWidth = window.innerWidth - 20 // 左右各留 10px
+  const count = store.targetNumber
+  const gap = 6
+  const totalGapWidth = (count - 1) * gap
+  const itemSize = Math.min(40, Math.floor((maxWidth - totalGapWidth) / count))
+  return {
+    size: itemSize,
+    gap: gap,
+    fontSize: itemSize * 0.6
+  }
+})
+
+function getCollectedPosition(orderIndex: number) {
+  const { size, gap } = collectedItemStyle.value
+  const startX = 10
+  const x = startX + orderIndex * (size + gap)
+  return { x }
+}
+
+// 點擊處理
+function handleItemClick(index: number) {
+  if (store.gameStatus !== 'playing') return
+  if (collectedItems.value.includes(index)) return
+  
+  collectedItems.value.push(index)
+  store.toggleCounted(index)
+}
 
 // Dynamic item size based on count
 const itemSizeClass = computed(() => {
+  if (store.targetNumber === 1) return 'size-solo'
+  if (store.targetNumber === 2) return 'size-xxl'
   if (store.targetNumber <= 4) return 'size-xl'
   if (store.targetNumber <= 8) return 'size-l'
   return 'size-m'
@@ -54,22 +86,38 @@ const itemSizeClass = computed(() => {
 
 function generatePositions() {
   const positions: {top: number, left: number, rotation: number}[] = []
-  const maxGlobalAttempts = 10 // How many times to restart the whole process if we get stuck
+  
+  // 特殊處理：單一物件置中
+  if (store.targetNumber === 1) {
+    itemPositions.value = [{
+      top: '35%',
+      left: '50%',
+      rotation: '0deg'
+    }]
+    return
+  }
+  
+  // 特殊處理：兩個物件左右對稱
+  if (store.targetNumber === 2) {
+    itemPositions.value = [
+      { top: '35%', left: '30%', rotation: '-5deg' },
+      { top: '35%', left: '70%', rotation: '5deg' }
+    ]
+    return
+  }
+  
+  const maxGlobalAttempts = 10
   let globalAttempts = 0
   let success = false
 
   // Dynamic min distance based on item count/size
-  // These values need to be large enough to cover the item size + padding
-  // XL (1-4): 25vw ~ 25% width. Safety: 28%
-  // L (5-8): 20vw ~ 20% width. Safety: 22%
-  // M (9-12): 15vw ~ 15% width. Safety: 17%
   let minDistance = 18
   if (store.targetNumber <= 4) minDistance = 28
   else if (store.targetNumber <= 8) minDistance = 22
   else minDistance = 17
 
   while (!success && globalAttempts < maxGlobalAttempts) {
-    positions.length = 0 // Clear positions
+    positions.length = 0
     let itemsPlaced = 0
     
     for (let i = 0; i < store.targetNumber; i++) {
@@ -81,18 +129,14 @@ function generatePositions() {
       const maxItemAttempts = 200
 
       while (!valid && attempts < maxItemAttempts) {
-        // Full width usage: Left 5% to 85%
-        // Top section usage: 10% to 60%
         top = Math.random() * 50 + 10 
-        left = Math.random() * 80 + 5 
+        left = Math.random() * 60 + 20  // 20% ~ 80%，確保不壓到邊緣
         rotation = Math.random() * 40 - 20
 
-        // Check collision with existing positions
         valid = true
         for (const pos of positions) {
           const dx = left - pos.left
           const dy = top - pos.top
-          // Simple Euclidean distance in % space
           const distance = Math.sqrt(dx * dx + dy * dy)
           
           if (distance < minDistance) {
@@ -107,7 +151,6 @@ function generatePositions() {
         positions.push({ top, left, rotation })
         itemsPlaced++
       } else {
-        // If we failed to place an item, break and try the whole set again
         break 
       }
     }
@@ -116,8 +159,6 @@ function generatePositions() {
       success = true
     } else {
       globalAttempts++
-      // Optional: slightly reduce strictness if we keep failing?
-      // minDistance *= 0.95 
     }
   }
 
@@ -135,6 +176,7 @@ function generatePositions() {
 // Watch for round changes to regenerate positions
 watch(() => store.targetNumber, () => {
   generatePositions()
+  collectedItems.value = []
 }, { immediate: true })
 
 onMounted(() => {
@@ -165,22 +207,41 @@ onMounted(() => {
           v-for="(pos, index) in itemPositions" 
           :key="index" 
           class="game-item scattered"
-          :class="[itemSizeClass, { 'counted': store.countedItems.has(index) }]"
+          :class="[
+            itemSizeClass, 
+            { 'collected': collectedItems.includes(index) }
+          ]"
           :style="{ 
             top: pos.top, 
             left: pos.left, 
-            transform: `rotate(${pos.rotation})`,
+            transform: `translate(-50%, -50%) rotate(${pos.rotation})`,
             animationDelay: `${index * 0.2}s` 
           }"
-          @click="store.toggleCounted(index)"
+          @click="handleItemClick(index)"
         >
           <span class="emoji">{{ currentEmoji }}</span>
-          <Transition name="pop">
-            <span v-if="store.countedItems.has(index)" class="count-badge">
-              {{ Array.from(store.countedItems).indexOf(index) + 1 }}
-            </span>
-          </Transition>
         </div>
+      </div>
+    </div>
+
+    <!-- Collection Tray -->
+    <div class="collection-tray">
+      <div class="collected-items">
+        <TransitionGroup name="collect">
+          <div 
+            v-for="(itemIndex, orderIndex) in collectedItems" 
+            :key="itemIndex"
+            class="collected-item"
+            :style="{ 
+              left: `${getCollectedPosition(orderIndex).x}px`,
+              width: `${collectedItemStyle.size}px`,
+              height: `${collectedItemStyle.size}px`
+            }"
+          >
+            <span class="collected-emoji" :style="{ fontSize: `${collectedItemStyle.fontSize}px` }">{{ currentEmoji }}</span>
+            <span class="collected-number">{{ orderIndex + 1 }}</span>
+          </div>
+        </TransitionGroup>
       </div>
     </div>
 
@@ -259,11 +320,15 @@ onMounted(() => {
 .lang-btn {
   background: white;
   border: 1px solid #ccc;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 12px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #333;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  white-space: nowrap;
+  min-width: 70px;
 }
 
 .exit-btn {
@@ -288,15 +353,31 @@ onMounted(() => {
 
 .game-item.scattered {
   position: absolute;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  animation: float 3s ease-in-out infinite;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.4s ease-out, transform 0.4s ease-out;
 }
 
 /* Dynamic Sizes */
+.game-item.size-solo {
+  width: 45vw;
+  height: 45vw;
+  max-width: 250px;
+  max-height: 250px;
+}
+.game-item.size-solo .emoji { font-size: 10rem; }
+
+.game-item.size-xxl {
+  width: 35vw;
+  height: 35vw;
+  max-width: 200px;
+  max-height: 200px;
+}
+.game-item.size-xxl .emoji { font-size: 8rem; }
+
 .game-item.size-xl {
   width: 25vw;
   height: 25vw;
@@ -322,47 +403,101 @@ onMounted(() => {
 .game-item.size-m .emoji { font-size: 4rem; }
 
 
-.game-item.scattered:active {
-  transform: scale(0.9) !important;
+.game-item.scattered:active:not(.collected) {
+  transform: translate(-50%, -50%) scale(0.9) !important;
 }
 
-.game-item.counted {
-  filter: brightness(1.2) drop-shadow(0 0 10px gold);
-}
-
-.count-badge {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  background: #FF5252;
-  color: white;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: 1rem;
-  border: 2px solid white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  z-index: 5;
+.game-item.collected {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0) !important;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .emoji {
   filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
   display: block;
   line-height: 1;
-  transition: font-size 0.3s ease;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0) rotate(var(--rotation)); }
-  50% { transform: translateY(-10px) rotate(var(--rotation)); }
+.game-item.scattered:not(.collected) .emoji {
+  animation: floatEmoji 3s ease-in-out infinite;
 }
 
-.pop-enter-active {
-  animation: popIn 0.3s;
+@keyframes floatEmoji {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* Collection Tray */
+.collection-tray {
+  height: 55px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.85));
+  border-top: 3px solid #FFB74D;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  position: relative;
+  z-index: 15;
+}
+
+.collected-items {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.collected-item {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.collected-emoji {
+  filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.2));
+}
+
+.collected-number {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: #FF5252;
+  color: white;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 0.6rem;
+  border: 1px solid white;
+}
+
+/* Collection animation */
+.collect-enter-active {
+  animation: dropIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes dropIn {
+  0% { 
+    opacity: 0;
+    transform: translateY(-200%) scale(1.5);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-40%) scale(1.1);
+  }
+  80% {
+    transform: translateY(-55%) scale(0.95);
+  }
+  100% { 
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
 }
 
 .bottom-section {

@@ -14,6 +14,13 @@ export const useGameStore = defineStore('game', () => {
         'apple', 'bird', 'elephant', 'car', 'star', 'bear',
         'flower', 'duck', 'fish', 'cat', 'dog', 'ball'
     ]
+    
+    // 隨機打亂的物品順序
+    const shuffledItems = ref<string[]>([])
+    
+    function shuffleItems() {
+        shuffledItems.value = [...items].sort(() => Math.random() - 0.5)
+    }
 
     const translations = {
         'zh-TW': {
@@ -40,7 +47,7 @@ export const useGameStore = defineStore('game', () => {
 
     const t = computed(() => translations[language.value])
 
-    const currentItem = computed(() => items[currentRound.value - 1] || 'apple')
+    const currentItem = computed(() => shuffledItems.value[currentRound.value - 1] || 'apple')
 
     const countedItems = ref<Set<number>>(new Set())
 
@@ -97,7 +104,7 @@ export const useGameStore = defineStore('game', () => {
 
         if (number === targetNumber.value) {
             // Correct
-            score.value++
+            score.value += 10
             feedbackType.value = 'correct'
             gameStatus.value = 'feedback'
             speak(t.value.correct)
@@ -109,7 +116,6 @@ export const useGameStore = defineStore('game', () => {
             // Wrong
             feedbackType.value = 'wrong'
             speak(t.value.tryAgain)
-            // Optional: Shake animation trigger or just sound
             setTimeout(() => {
                 feedbackType.value = null
             }, 1000)
@@ -129,6 +135,9 @@ export const useGameStore = defineStore('game', () => {
     function startGame() {
         currentRound.value = 1
         score.value = 0
+        gameStatus.value = 'playing'
+        feedbackType.value = null
+        shuffleItems()
         generateRound()
     }
 
