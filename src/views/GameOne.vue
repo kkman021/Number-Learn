@@ -49,13 +49,16 @@ const collectedItems = ref<number[]>([])
 const collectedItemStyle = computed(() => {
   const maxWidth = window.innerWidth - 20 // 左右各留 10px
   const count = store.targetNumber
-  const gap = 6
+  const gap = 12
   const totalGapWidth = (count - 1) * gap
-  const itemSize = Math.min(40, Math.floor((maxWidth - totalGapWidth) / count))
+  const itemSize = Math.min(80, Math.floor((maxWidth - totalGapWidth) / count))
   return {
     size: itemSize,
     gap: gap,
-    fontSize: itemSize * 0.6
+    fontSize: itemSize * 0.7,
+    numberSize: itemSize * 0.4,
+    numberFontSize: itemSize * 0.25,
+    numberBorder: Math.max(2, itemSize * 0.025)
   }
 })
 
@@ -86,86 +89,82 @@ const itemSizeClass = computed(() => {
 
 function generatePositions() {
   const positions: {top: number, left: number, rotation: number}[] = []
-  
+
   // 特殊處理：單一物件置中
   if (store.targetNumber === 1) {
     itemPositions.value = [{
-      top: '35%',
+      top: '40%',
       left: '50%',
       rotation: '0deg'
     }]
     return
   }
-  
+
   // 特殊處理：兩個物件左右對稱
   if (store.targetNumber === 2) {
     itemPositions.value = [
-      { top: '35%', left: '30%', rotation: '-5deg' },
-      { top: '35%', left: '70%', rotation: '5deg' }
+      { top: '38%', left: '30%', rotation: '-5deg' },
+      { top: '42%', left: '70%', rotation: '5deg' }
     ]
     return
   }
-  
-  const maxGlobalAttempts = 10
-  let globalAttempts = 0
-  let success = false
 
-  // Dynamic min distance based on item count/size
-  let minDistance = 18
-  if (store.targetNumber <= 4) minDistance = 28
-  else if (store.targetNumber <= 8) minDistance = 22
-  else minDistance = 17
+  // Grid with Jitter 布局算法
+  // 計算最佳網格配置
+  const cols = Math.ceil(Math.sqrt(store.targetNumber * 1.2)) // 略寬的網格
+  const rows = Math.ceil(store.targetNumber / cols)
 
-  while (!success && globalAttempts < maxGlobalAttempts) {
-    positions.length = 0
-    let itemsPlaced = 0
-    
-    for (let i = 0; i < store.targetNumber; i++) {
-      let attempts = 0
-      let valid = false
-      let top = 0
-      let left = 0
-      let rotation = 0
-      const maxItemAttempts = 200
+  // 定義可用區域
+  const areaTop = 10
+  const areaHeight = 62
+  const areaLeft = 20
+  const areaWidth = 60
 
-      while (!valid && attempts < maxItemAttempts) {
-        top = Math.random() * 50 + 10 
-        left = Math.random() * 60 + 20  // 20% ~ 80%，確保不壓到邊緣
-        rotation = Math.random() * 40 - 20
+  // 計算格子大小
+  const cellWidth = areaWidth / cols
+  const cellHeight = areaHeight / rows
 
-        valid = true
-        for (const pos of positions) {
-          const dx = left - pos.left
-          const dy = top - pos.top
-          const distance = Math.sqrt(dx * dx + dy * dy)
-          
-          if (distance < minDistance) {
-            valid = false
-            break
-          }
-        }
-        attempts++
-      }
+  // 根據數量動態調整擾動強度
+  let jitterStrength = 0.35
+  if (store.targetNumber <= 4) jitterStrength = 0.4
+  else if (store.targetNumber <= 6) jitterStrength = 0.38
+  else if (store.targetNumber >= 10) jitterStrength = 0.3
 
-      if (valid) {
-        positions.push({ top, left, rotation })
-        itemsPlaced++
-      } else {
-        break 
-      }
-    }
-
-    if (itemsPlaced === store.targetNumber) {
-      success = true
-    } else {
-      globalAttempts++
-    }
+  // 創建所有格子位置並打亂
+  const gridIndices: number[] = []
+  for (let i = 0; i < cols * rows; i++) {
+    gridIndices.push(i)
   }
 
-  // If we still failed after global retries, we might have some overlap, 
-  // but we'll use whatever we managed to generate in the last attempt 
-  // (or maybe we should just force grid? sticking to random for now)
-  
+  // Fisher-Yates 打亂算法
+  for (let i = gridIndices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[gridIndices[i], gridIndices[j]] = [gridIndices[j]!, gridIndices[i]!]
+  }
+
+  // 為每個物件分配位置
+  for (let i = 0; i < store.targetNumber; i++) {
+    const gridIndex = gridIndices[i]!
+    const col = gridIndex % cols
+    const row = Math.floor(gridIndex / cols)
+
+    // 計算格子中心點
+    const centerLeft = areaLeft + cellWidth * (col + 0.5)
+    const centerTop = areaTop + cellHeight * (row + 0.5)
+
+    // 添加隨機擾動（在格子範圍內）
+    const jitterX = (Math.random() - 0.5) * cellWidth * jitterStrength
+    const jitterY = (Math.random() - 0.5) * cellHeight * jitterStrength
+
+    const left = centerLeft + jitterX
+    const top = centerTop + jitterY
+
+    // 隨機旋轉角度
+    const rotation = Math.random() * 40 - 20
+
+    positions.push({ top, left, rotation })
+  }
+
   itemPositions.value = positions.map(p => ({
     top: `${p.top}%`,
     left: `${p.left}%`,
@@ -228,18 +227,28 @@ onMounted(() => {
     <div class="collection-tray">
       <div class="collected-items">
         <TransitionGroup name="collect">
-          <div 
-            v-for="(itemIndex, orderIndex) in collectedItems" 
+          <div
+            v-for="(itemIndex, orderIndex) in collectedItems"
             :key="itemIndex"
             class="collected-item"
-            :style="{ 
+            :style="{
               left: `${getCollectedPosition(orderIndex).x}px`,
               width: `${collectedItemStyle.size}px`,
               height: `${collectedItemStyle.size}px`
             }"
           >
             <span class="collected-emoji" :style="{ fontSize: `${collectedItemStyle.fontSize}px` }">{{ currentEmoji }}</span>
-            <span class="collected-number">{{ orderIndex + 1 }}</span>
+            <span
+              class="collected-number"
+              :style="{
+                width: `${collectedItemStyle.numberSize}px`,
+                height: `${collectedItemStyle.numberSize}px`,
+                fontSize: `${collectedItemStyle.numberFontSize}px`,
+                borderWidth: `${collectedItemStyle.numberBorder}px`,
+                bottom: `${-collectedItemStyle.numberSize * 0.125}px`,
+                right: `${-collectedItemStyle.numberSize * 0.125}px`
+              }"
+            >{{ orderIndex + 1 }}</span>
           </div>
         </TransitionGroup>
       </div>
@@ -431,7 +440,7 @@ onMounted(() => {
 
 /* Collection Tray */
 .collection-tray {
-  height: 55px;
+  height: 110px;
   background: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.85));
   border-top: 3px solid #FFB74D;
   display: flex;
@@ -462,19 +471,15 @@ onMounted(() => {
 
 .collected-number {
   position: absolute;
-  bottom: -2px;
-  right: -2px;
   background: #FF5252;
   color: white;
-  width: 16px;
-  height: 16px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: 0.6rem;
-  border: 1px solid white;
+  border-style: solid;
+  border-color: white;
 }
 
 /* Collection animation */
